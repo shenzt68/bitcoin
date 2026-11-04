@@ -1,8 +1,8 @@
 # NetBSD Build Guide
 
-Updated for NetBSD [9.2](https://netbsd.org/releases/formal-9/NetBSD-9.2.html).
+Bitcoin Core is supported on all [supported NetBSD releases](https://www.netbsd.org/releases/).
 
-This guide describes how to build bitcoind, command-line utilities, and GUI on NetBSD.
+This guide describes how to build bitcoind, command-line utilities, and GUI on the latest release.
 
 ## Preparation
 
@@ -12,25 +12,24 @@ Install the required dependencies the usual way you [install software on NetBSD]
 The example commands below use `pkgin`.
 
 ```bash
-pkgin install autoconf automake libtool pkg-config git gmake boost libevent
-
+pkgin install git cmake boost
 ```
 
-NetBSD currently ships with an older version of `gcc` than is needed to build. You should upgrade your `gcc` and then pass this new version to the configure script.
+SQLite is required for the wallet:
 
-For example, grab `gcc9`:
-```
-pkgin install gcc9
-```
-
-Then, when configuring, pass the following:
 ```bash
-./configure
-    ...
-    CC="/usr/pkg/gcc9/bin/gcc" \
-    CXX="/usr/pkg/gcc9/bin/g++" \
-    ...
+pkgin install sqlite3
 ```
+
+To build Bitcoin Core without the wallet, use `-DENABLE_WALLET=OFF`.
+
+Cap'n Proto is needed for IPC functionality (see [multiprocess.md](multiprocess.md)):
+
+```bash
+pkgin install capnproto pkgconf
+```
+
+Compile with `-DENABLE_IPC=OFF` if you do not need IPC functionality.
 
 See [dependencies.md](dependencies.md) for a complete overview.
 
@@ -44,53 +43,39 @@ git clone https://github.com/bitcoin/bitcoin.git
 
 ### 3. Install Optional Dependencies
 
-#### Wallet Dependencies
-
-It is not necessary to build wallet functionality to run bitcoind or the GUI.
-
-###### Descriptor Wallet Support
-
-`sqlite3` is required to enable support for [descriptor wallets](https://github.com/bitcoin/bitcoin/blob/master/doc/descriptors.md).
-
-```bash
-pkgin install sqlite3
-```
-
-###### Legacy Wallet Support
-
-`db4` is required to enable support for legacy wallets.
-
-```bash
-pkgin install db4
-```
-
 #### GUI Dependencies
+###### Qt6
 
-Bitcoin Core includes a GUI built with the cross-platform Qt Framework. To compile the GUI, we need to install `qt5`.
+Bitcoin Core includes a GUI built with the cross-platform Qt Framework. To compile the GUI, we need to install
+the necessary parts of Qt, the libqrencode and pass `-DBUILD_GUI=ON`. Skip if you don't intend to use the GUI.
 
 ```bash
-pkgin install qt5
+pkgin install qt6-qtbase qt6-qttools
 ```
 
-The GUI can encode addresses in a QR Code. To build in QR support for the GUI, install `qrencode`.
+###### libqrencode
+
+The GUI will be able to encode addresses in QR codes unless this feature is explicitly disabled. To install libqrencode, run:
 
 ```bash
 pkgin install qrencode
 ```
 
-#### Test Suite Dependencies
+Otherwise, if you don't need QR encoding support, use the `-DWITH_QRENCODE=OFF` option to disable this feature in order to compile the GUI.
 
-There is an included test suite that is useful for testing code changes when developing.
-To run the test suite (recommended), you will need to have Python 3 installed:
+#### Notifications
+###### ZeroMQ
 
+Bitcoin Core can provide notifications via ZeroMQ. To compile ZMQ support, install the following dependency and pass `-DWITH_ZMQ=ON` when configuring.
 ```bash
-pkgin install python37
+pkgin install zeromq pkgconf
 ```
 
-### Building Bitcoin Core
+#### Test Suite Dependencies
 
-**Note**: Use `gmake` (the non-GNU `make` will exit with an error).
+See [`test/README.md`](/test/README.md#dependencies-and-prerequisites).
 
+## Building Bitcoin Core
 
 ### 1. Configuration
 
@@ -98,19 +83,16 @@ There are many ways to configure Bitcoin Core. Here is an example that
 explicitly disables the wallet and GUI:
 
 ```bash
-./autogen.sh
-./configure --without-wallet --with-gui=no \
-    CPPFLAGS="-I/usr/pkg/include" \
-    MAKE=gmake
+cmake -B build -DENABLE_WALLET=OFF -DBUILD_GUI=OFF
 ```
 
-For a full list of configuration options, see the output of `./configure --help`
+Run `cmake -B build -LH` to see the full list of available options.
 
 ### 2. Compile
 
 Build and run the tests:
 
 ```bash
-gmake # use "-j N" here for N parallel jobs
-gmake check # Run tests if Python 3 is available
+cmake --build build     # Append "-j N" for N parallel jobs.
+ctest --test-dir build  # Append "-j N" for N parallel tests.
 ```
